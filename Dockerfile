@@ -10,6 +10,5 @@ RUN go build -o app main.go
 FROM alpine:latest
 WORKDIR /app
 COPY --from=builder /app/app /app/
-COPY config.ini urls.txt ./
 EXPOSE 8081
 CMD ["./app"]

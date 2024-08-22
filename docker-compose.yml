@@ -1,10 +1,9 @@
-version: '2.2'
-
 services:
-  url_shortener:
+  urlshortener:
     build:
       context: .
       dockerfile: Dockerfile
+    image: pavelveter/urlshortener:latest
     ports:
       - '8081:8081'
     volumes:
