@@ -70,45 +70,43 @@ func loadConfig(filename string) (*Config, error) {
 }
 
 func shortenHandler(w http.ResponseWriter, r *http.Request) {
-    log.Println("shortenHandler called")
+	if r.Method != http.MethodPost {
+		http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
+		return
+	}
 
-    if r.Method != http.MethodPost {
-        http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
-        return
-    }
+	err := r.ParseForm()
+	if err != nil {
+		http.Error(w, "Failed to parse form", http.StatusBadRequest)
+		return
+	}
 
-    err := r.ParseForm()
-    if err != nil {
-        http.Error(w, "Failed to parse form", http.StatusBadRequest)
-        return
-    }
+	password := r.FormValue("password")
+	originalURL := r.FormValue("url")
 
-    password := r.FormValue("password")
-    originalURL := r.FormValue("url")
+	log.Printf("Received URL: '%s'", originalURL)
 
-    log.Printf("Received URL: '%s'", originalURL)
+	if password != config.Password {
+		log.Println("Unauthorized access attempt")
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
 
-    if password != config.Password {
-        log.Println("Unauthorized access attempt")
-        http.Error(w, "Unauthorized", http.StatusUnauthorized)
-        return
-    }
+	if originalURL == "" || !isValidURL(originalURL) {
+		log.Println("Invalid URL")
+		http.Error(w, "Invalid URL", http.StatusBadRequest)
+		return
+	}
 
-    if originalURL == "" || !isValidURL(originalURL) {
-        log.Println("Invalid URL")
-        http.Error(w, "Invalid URL", http.StatusBadRequest)
-        return
-    }
+	shortURL := generateShortURL(originalURL)
 
-    shortURL := generateShortURL(originalURL)
+	mu.Lock()
+	urlMap[shortURL] = originalURL
+	saveUrl(shortURL, originalURL)
+	mu.Unlock()
 
-    mu.Lock()
-    urlMap[shortURL] = originalURL
-    saveUrl(shortURL, originalURL)
-    mu.Unlock()
-
-    log.Printf("Short URL created: https://%s%s/%s", config.BaseURL, config.Path, shortURL)
-    fmt.Fprintf(w, "https://%s%s/%s\n", config.BaseURL, config.Path, shortURL)
+	log.Printf("Short URL created: https://%s%s/%s", config.BaseURL, config.Path, shortURL)
+	fmt.Fprintf(w, "https://%s%s/%s\n", config.BaseURL, config.Path, shortURL)
 }
 
 func redirectHandler(w http.ResponseWriter, r *http.Request) {
@@ -127,7 +125,10 @@ func redirectHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func generateShortURL(url string) string {
-	for {
+	const maxAttempts = 1000
+	attempts := 0
+
+	for attempts < maxAttempts {
 		b := make([]byte, 5)
 		if _, err := rand.Read(b); err != nil {
 			log.Fatal(err)
@@ -141,33 +142,38 @@ func generateShortURL(url string) string {
 		if !exists {
 			return shortURL
 		}
+
+		attempts++
 	}
+
+	log.Fatalf("Unable to generate unique short URL after %d attempts", maxAttempts)
+	return ""
 }
 
 func loadUrls() {
-    log.Printf("Attempting to open file: %s\n", config.URLsFile)
-    file, err := os.Open(config.URLsFile)
-    if err != nil {
-        log.Printf("Could not open file: %v\n", err)
-        return
-    }
-    defer file.Close()
+	log.Printf("Attempting to open file: %s\n", config.URLsFile)
+	file, err := os.Open(config.URLsFile)
+	if err != nil {
+		log.Printf("Could not open file: %v\n", err)
+		return
+	}
+	defer file.Close()
 
-    scanner := bufio.NewScanner(file)
-    for scanner.Scan() {
-        line := scanner.Text()
-        parts := strings.SplitN(line, " ", 2) // Используем пробел в качестве разделителя
-        if len(parts) == 2 {
-            urlMap[parts[0]] = parts[1]
-            log.Printf("Loaded URL mapping: %s -> %s\n", parts[0], parts[1])
-        } else {
-            log.Printf("Skipping invalid line: %s\n", line)
-        }
-    }
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := scanner.Text()
+		parts := strings.SplitN(line, " ", 2)
+		if len(parts) == 2 {
+			urlMap[parts[0]] = parts[1]
+			log.Printf("Loaded URL mapping: %s -> %s\n", parts[0], parts[1])
+		} else {
+			log.Printf("Skipping invalid line: %s\n", line)
+		}
+	}
 
-    if err := scanner.Err(); err != nil {
-        log.Printf("Error reading file: %v\n", err)
-    }
+	if err := scanner.Err(); err != nil {
+		log.Printf("Error reading file: %v\n", err)
+	}
 }
 
 func saveUrl(shortURL, originalURL string) {
@@ -192,24 +198,24 @@ func isValidURL(urlStr string) bool {
 }
 
 func passwordProtected(next http.HandlerFunc) http.HandlerFunc {
-    return func(w http.ResponseWriter, r *http.Request) {
-        if r.Method != http.MethodPost {
-            http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
-            return
-        }
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
+			return
+		}
 
-        err := r.ParseForm()
-        if err != nil {
-            http.Error(w, "Failed to parse form", http.StatusBadRequest)
-            return
-        }
+		err := r.ParseForm()
+		if err != nil {
+			http.Error(w, "Failed to parse form", http.StatusBadRequest)
+			return
+		}
 
-        password := r.FormValue("password")
-        if password != config.Password {
-            http.Error(w, "Unauthorized", http.StatusUnauthorized)
-            return
-        }
+		password := r.FormValue("password")
+		if password != config.Password {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
 
-        next.ServeHTTP(w, r)
-    }
+		next.ServeHTTP(w, r)
+	}
 }
