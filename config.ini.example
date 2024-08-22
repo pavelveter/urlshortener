@@ -1,0 +1,6 @@
+[server]
+urlsfile = urls.txt
+baseurl = domain.com
+path = /s
+password = yourpassword
+port = 8081
