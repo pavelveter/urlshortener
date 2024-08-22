@@ -1,0 +1,10 @@
+.vscode/
+.dockerignore
+*.log
+.git
+.gitignore
+*.md
+Dockerfile
+docker-compose.yml
+url_shortener.service
+urlshortener
