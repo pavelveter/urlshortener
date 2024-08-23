@@ -8,3 +8,5 @@ Dockerfile
 docker-compose.yml
 url_shortener.service
 urlshortener
+coverage.*
+main_test.go
